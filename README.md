@@ -4,8 +4,10 @@ Ask business questions in plain English and get the SQL, a result table, a chart
 Built on the [Olist Brazilian e-commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
 (about 100K orders, 2016-2018, 8 linked tables).
 
-![Top categories: table and bar chart](docs/demo1.webp)
-![Monthly orders: auto line chart](docs/demo2.png)
+![Top categories: table and bar chart](demo1.webp)
+![Monthly orders: auto line chart](demo2.png)
+
+*Data ends Oct 2018, so the last two months in the line chart are partial.*
 
 ```
 question -> schema + business notes + question -> LLM writes SQL -> guardrails -> SQLite (read-only)
@@ -13,6 +15,8 @@ question -> schema + business notes + question -> LLM writes SQL -> guardrails -
 ```
 
 ## Quick start
+The Olist data is not included in this repo. Download the [dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) from Kaggle and put the 8 CSVs in `data/raw/`.
+
 ```bash
 pip install -r requirements.txt
 cp .env.example .env            # add your free Groq key from console.groq.com
@@ -76,8 +80,7 @@ on the first try.
 - A correct-looking answer can still use the wrong definition (e.g. revenue with or without freight); the SQL is always shown for that reason.
 
 ## Deploy (Streamlit Community Cloud)
-Push to GitHub (the raw CSVs are under GitHub's 100 MB file limit; `data/olist.db` is git-ignored and rebuilt on first start),
-create the app from the repo, and add your key under Settings -> Secrets:
+The Olist data is not in this repo, so add the 8 CSVs (or the `.csv.gz` versions) to `data/raw/` before deploying; `data/olist.db` is git-ignored and rebuilt on first start. Then create the app from the repo and add your key under Settings -> Secrets:
 
 ```
 GROQ_API_KEY = "your-groq-key"
