@@ -43,8 +43,10 @@ def build(RAW: Path = Path("data/raw"), DB: Path = Path("data/olist.db"), log=pr
     con = sqlite3.connect(DB)
     for fname, table in FILES.items():
         path = RAW / fname
+        if not path.exists():  # also accept the compressed version (.csv.gz)
+            path = RAW / (fname + ".gz")
         if not path.exists():
-            sys.exit(f"Missing file: {path}")
+            sys.exit(f"Missing file: {RAW / fname} (or {fname}.gz)")
         df = pd.read_csv(path, encoding="utf-8-sig")
         df.to_sql(table, con, index=False)
         log(f"{table:22s} {len(df):>8,} rows")
