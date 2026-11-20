@@ -1,0 +1,71 @@
+"""Generates eval/questions_olist.json. Gold SQL is hand-written and checked against the database."""
+import json
+
+D = "o.order_status = 'delivered'"
+Q = [
+# ---- easy
+("easy", "How many orders are in the database?", "SELECT COUNT(*) FROM orders", False),
+("easy", "How many unique customers (real people, not orders) are there?", "SELECT COUNT(DISTINCT customer_unique_id) FROM customers", False),
+("easy", "How many sellers are there?", "SELECT COUNT(*) FROM sellers", False),
+("easy", "How many orders were canceled?", "SELECT COUNT(*) FROM orders WHERE order_status = 'canceled'", False),
+("easy", "How many orders are there for each order status?", "SELECT order_status, COUNT(*) FROM orders GROUP BY order_status", False),
+("easy", "How many payments were made with each payment type?", "SELECT payment_type, COUNT(*) FROM order_payments GROUP BY payment_type", False),
+("easy", "How many products are in the catalogue?", "SELECT COUNT(*) FROM products", False),
+("easy", "What is the average review score, rounded to 2 decimals?", "SELECT ROUND(AVG(review_score), 2) FROM order_reviews", False),
+("easy", "What are the earliest and latest order purchase timestamps?", "SELECT MIN(order_purchase_timestamp), MAX(order_purchase_timestamp) FROM orders", False),
+("easy", "What is the average freight value per order item, rounded to 2 decimals?", "SELECT ROUND(AVG(freight_value), 2) FROM order_items", False),
+("easy", "Which 5 states have the most sellers? Return the state and the number of sellers.", "SELECT seller_state, COUNT(*) AS n FROM sellers GROUP BY seller_state ORDER BY n DESC LIMIT 5", True),
+("easy", "Which 5 cities have the most customers (by customer_id rows)? Return city and count.", "SELECT customer_city, COUNT(*) AS n FROM customers GROUP BY customer_city ORDER BY n DESC LIMIT 5", True),
+# ---- medium
+("medium", "What is the total revenue from delivered orders, rounded to 2 decimals?", f"SELECT ROUND(SUM(oi.price), 2) FROM order_items oi JOIN orders o ON o.order_id = oi.order_id WHERE {D}", False),
+("medium", "What are the top 10 product categories (English names) by revenue from delivered orders? Return category and revenue rounded to 2 decimals.", f"SELECT t.product_category_name_english, ROUND(SUM(oi.price), 2) AS rev FROM order_items oi JOIN orders o ON o.order_id = oi.order_id JOIN products p ON p.product_id = oi.product_id JOIN category_translation t ON t.product_category_name = p.product_category_name WHERE {D} GROUP BY 1 ORDER BY rev DESC LIMIT 10", True),
+("medium", "How many orders were placed in each year? Return year and number of orders.", "SELECT strftime('%Y', order_purchase_timestamp) AS y, COUNT(*) FROM orders GROUP BY y", False),
+("medium", "What was the revenue of delivered orders in each month of 2017? Return month (YYYY-MM) and revenue rounded to 2 decimals.", f"SELECT strftime('%Y-%m', o.order_purchase_timestamp) AS m, ROUND(SUM(oi.price), 2) FROM order_items oi JOIN orders o ON o.order_id = oi.order_id WHERE {D} AND strftime('%Y', o.order_purchase_timestamp) = '2017' GROUP BY m", False),
+("medium", "Which 5 customer states have the most delivered orders? Return state and number of orders.", f"SELECT c.customer_state, COUNT(*) AS n FROM orders o JOIN customers c ON c.customer_id = o.customer_id WHERE {D} GROUP BY 1 ORDER BY n DESC LIMIT 5", True),
+("medium", "What is the average delivery time in days for delivered orders (purchase to delivery to customer), rounded to 2 decimals?", f"SELECT ROUND(AVG(julianday(order_delivered_customer_date) - julianday(order_purchase_timestamp)), 2) FROM orders o WHERE {D} AND order_delivered_customer_date IS NOT NULL", False),
+("medium", "What percentage of delivered orders were delivered after the estimated delivery date? Only count delivered orders that have a delivery date. Round to 2 decimals.", f"SELECT ROUND(100.0 * SUM(order_delivered_customer_date > order_estimated_delivery_date) / COUNT(*), 2) FROM orders o WHERE {D} AND order_delivered_customer_date IS NOT NULL", False),
+("medium", "Which payment type has the highest total payment value? Return the payment type and total rounded to 2 decimals.", "SELECT payment_type, ROUND(SUM(payment_value), 2) AS t FROM order_payments GROUP BY 1 ORDER BY t DESC LIMIT 1", True),
+("medium", "What is the average number of installments for credit card payments, rounded to 2 decimals?", "SELECT ROUND(AVG(payment_installments), 2) FROM order_payments WHERE payment_type = 'credit_card'", False),
+("medium", "Who are the top 10 sellers by revenue from delivered orders? Return seller_id and revenue rounded to 2 decimals.", f"SELECT oi.seller_id, ROUND(SUM(oi.price), 2) AS rev FROM order_items oi JOIN orders o ON o.order_id = oi.order_id WHERE {D} GROUP BY 1 ORDER BY rev DESC LIMIT 10", True),
+("medium", "How many real customers (customer_unique_id) placed more than one order?", "SELECT COUNT(*) FROM (SELECT c.customer_unique_id FROM orders o JOIN customers c ON c.customer_id = o.customer_id GROUP BY 1 HAVING COUNT(*) > 1)", False),
+("medium", "What is the average order value, where an order's value is the sum of its payment values? Round to 2 decimals.", "SELECT ROUND(AVG(t), 2) FROM (SELECT SUM(payment_value) AS t FROM order_payments GROUP BY order_id)", False),
+("medium", "How many orders contain more than one item?", "SELECT COUNT(*) FROM (SELECT order_id FROM order_items GROUP BY 1 HAVING COUNT(*) > 1)", False),
+("medium", "What is the total freight value for each seller state? Return state and total rounded to 2 decimals.", "SELECT s.seller_state, ROUND(SUM(oi.freight_value), 2) FROM order_items oi JOIN sellers s ON s.seller_id = oi.seller_id GROUP BY 1", False),
+("medium", "How many reviews have a score of 5, and what percentage of all reviews is that (rounded to 2 decimals)?", "SELECT SUM(review_score = 5), ROUND(100.0 * SUM(review_score = 5) / COUNT(*), 2) FROM order_reviews", False),
+("medium", "Which hour of the day (0-23) has the most orders placed?", "SELECT CAST(strftime('%H', order_purchase_timestamp) AS INTEGER) AS h FROM orders GROUP BY h ORDER BY COUNT(*) DESC LIMIT 1", False),
+("medium", "What is the average payment value for each payment type, rounded to 2 decimals?", "SELECT payment_type, ROUND(AVG(payment_value), 2) FROM order_payments GROUP BY 1", False),
+("medium", "How many delivered orders were delivered more than 7 days after the estimated delivery date?", f"SELECT COUNT(*) FROM orders o WHERE {D} AND julianday(order_delivered_customer_date) - julianday(order_estimated_delivery_date) > 7", False),
+("medium", "How many orders were placed in each month of 2018? Return month (YYYY-MM) and count.", "SELECT strftime('%Y-%m', order_purchase_timestamp) AS m, COUNT(*) FROM orders WHERE strftime('%Y', order_purchase_timestamp) = '2018' GROUP BY m", False),
+("medium", "What is the average number of items per delivered order, rounded to 2 decimals?", f"SELECT ROUND(1.0 * COUNT(*) / COUNT(DISTINCT oi.order_id), 2) FROM order_items oi JOIN orders o ON o.order_id = oi.order_id WHERE {D}", False),
+# ---- hard
+("hard", "Which month of 2017 had the highest revenue growth compared to the previous month, using revenue from delivered orders? Return the month as YYYY-MM. (Compare each month in 2017 with the month before it, including December 2016 for January.)",
+ f"WITH m AS (SELECT strftime('%Y-%m', o.order_purchase_timestamp) AS m, SUM(oi.price) AS rev FROM order_items oi JOIN orders o ON o.order_id = oi.order_id WHERE {D} GROUP BY m), g AS (SELECT m, rev - LAG(rev) OVER (ORDER BY m) AS d FROM m) SELECT m FROM g WHERE m LIKE '2017-%' ORDER BY d DESC LIMIT 1", False),
+("hard", "For each of the 5 customer states with the most delivered orders, what is the average review score (rounded to 2 decimals)? Return state and average score.",
+ f"WITH top AS (SELECT c.customer_state AS s FROM orders o JOIN customers c ON c.customer_id = o.customer_id WHERE {D} GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 5) SELECT c.customer_state, ROUND(AVG(r.review_score), 2) FROM orders o JOIN customers c ON c.customer_id = o.customer_id JOIN order_reviews r ON r.order_id = o.order_id WHERE {D} AND c.customer_state IN (SELECT s FROM top) GROUP BY 1", False),
+("hard", "Who are the 10 real customers (customer_unique_id) who spent the most on delivered orders, by sum of item prices? Return customer_unique_id and total spent rounded to 2 decimals.",
+ f"SELECT c.customer_unique_id, ROUND(SUM(oi.price), 2) AS t FROM orders o JOIN customers c ON c.customer_id = o.customer_id JOIN order_items oi ON oi.order_id = o.order_id WHERE {D} GROUP BY 1 ORDER BY t DESC LIMIT 10", True),
+("hard", "What share of total delivered revenue (item prices) comes from the top 10 sellers by revenue? Return a percentage rounded to 2 decimals.",
+ f"WITH s AS (SELECT oi.seller_id, SUM(oi.price) AS rev FROM order_items oi JOIN orders o ON o.order_id = oi.order_id WHERE {D} GROUP BY 1) SELECT ROUND(100.0 * (SELECT SUM(rev) FROM (SELECT rev FROM s ORDER BY rev DESC LIMIT 10)) / (SELECT SUM(rev) FROM s), 2)", False),
+("hard", "Which 5 customer states have the slowest average delivery time in days for delivered orders? Return state and average days rounded to 2 decimals.",
+ f"SELECT c.customer_state, ROUND(AVG(julianday(o.order_delivered_customer_date) - julianday(o.order_purchase_timestamp)), 2) AS d FROM orders o JOIN customers c ON c.customer_id = o.customer_id WHERE {D} AND o.order_delivered_customer_date IS NOT NULL GROUP BY 1 ORDER BY d DESC LIMIT 5", True),
+("hard", "What percentage of real customers (customer_unique_id) have placed more than one order? Round to 2 decimals.",
+ "SELECT ROUND(100.0 * SUM(n > 1) / COUNT(*), 2) FROM (SELECT c.customer_unique_id, COUNT(*) AS n FROM orders o JOIN customers c ON c.customer_id = o.customer_id GROUP BY 1)", False),
+("hard", "How many sellers have sold products from more than 5 different product categories (using the Portuguese category name in products)?",
+ "SELECT COUNT(*) FROM (SELECT oi.seller_id FROM order_items oi JOIN products p ON p.product_id = oi.product_id WHERE p.product_category_name IS NOT NULL GROUP BY 1 HAVING COUNT(DISTINCT p.product_category_name) > 5)", False),
+("hard", "Which product category (English name) has the highest ratio of total freight value to total item price, among categories with at least 100 order items? Return the category and the ratio rounded to 3 decimals.",
+ "SELECT t.product_category_name_english, ROUND(SUM(oi.freight_value) / SUM(oi.price), 3) AS r FROM order_items oi JOIN products p ON p.product_id = oi.product_id JOIN category_translation t ON t.product_category_name = p.product_category_name GROUP BY 1 HAVING COUNT(*) >= 100 ORDER BY r DESC LIMIT 1", False),
+("hard", "Among customer states with at least 500 orders, which has the highest average order value (order value = sum of payment values per order)? Return the state and the average rounded to 2 decimals.",
+ "WITH ov AS (SELECT o.order_id, c.customer_state AS s, SUM(p.payment_value) AS v FROM orders o JOIN customers c ON c.customer_id = o.customer_id JOIN order_payments p ON p.order_id = o.order_id GROUP BY o.order_id) SELECT s, ROUND(AVG(v), 2) AS a FROM ov GROUP BY s HAVING COUNT(*) >= 500 ORDER BY a DESC LIMIT 1", False),
+("hard", "Among order items that belong to orders with at least one 1-star review, which product category (English name) is the most common? Return the category and the number of items.",
+ "SELECT t.product_category_name_english, COUNT(*) AS n FROM order_items oi JOIN products p ON p.product_id = oi.product_id JOIN category_translation t ON t.product_category_name = p.product_category_name WHERE oi.order_id IN (SELECT order_id FROM order_reviews WHERE review_score = 1) GROUP BY 1 ORDER BY n DESC LIMIT 1", False),
+("hard", "Which delivered order had the longest delivery time (purchase to delivery to customer)? Return the order_id and the number of days rounded to 1 decimal.",
+ f"SELECT order_id, ROUND(julianday(order_delivered_customer_date) - julianday(order_purchase_timestamp), 1) AS d FROM orders o WHERE {D} AND order_delivered_customer_date IS NOT NULL ORDER BY d DESC LIMIT 1", False),
+("hard", "What is the average review score for orders delivered late (after the estimated date) versus orders delivered on time? Return a label ('late' or 'on_time') and the average rounded to 2 decimals. Only use delivered orders with a delivery date.",
+ f"SELECT CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date THEN 'late' ELSE 'on_time' END AS k, ROUND(AVG(r.review_score), 2) FROM orders o JOIN order_reviews r ON r.order_id = o.order_id WHERE {D} AND o.order_delivered_customer_date IS NOT NULL GROUP BY k", False),
+("hard", "For each year, what percentage of orders were canceled? Return year and percentage rounded to 2 decimals.",
+ "SELECT strftime('%Y', order_purchase_timestamp) AS y, ROUND(100.0 * SUM(order_status = 'canceled') / COUNT(*), 2) FROM orders GROUP BY y", False),
+]
+
+out = [{"id": f"q{i+1:02d}", "difficulty": d, "question": q, "gold_sql": s, "ordered": o} for i, (d, q, s, o) in enumerate(Q)]
+json.dump(out, open("eval/questions_olist.json", "w"), indent=1)
+print(len(out), "questions")
